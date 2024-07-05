@@ -1,2 +1,5 @@
 chainlit==1.1.306
-langchain==0.2
+chainlit==1.1.306
+langchain==0.2.6
+langchain-core
+langchain-community
