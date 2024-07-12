@@ -8,9 +8,14 @@ from langchain.schema import StrOutputParser
 # from langchain.schema.runnable import Runnable
 # from langchain.schema.runnable.config import RunnableConfig
 
+
+from chainlit.input_widget import Select, Switch, Slider
+
 @cl.on_chat_start
-def on_chat_start():
-    model = ChatOllama(model="phi3")
+async def on_chat_start():
+    settings = await init_setting()
+    md = settings["Model"]
+    model = ChatOllama(model=md)
     prompt = ChatPromptTemplate.from_messages(
         [
             (
@@ -28,6 +33,8 @@ def on_chat_start():
 @cl.on_chat_end
 def on_chat_end():
     print("The user disconnected!")
+
+
 
 
 @cl.on_message
@@ -57,3 +64,33 @@ if __name__ == "__main__":
     config.run.debug = False
     run_chainlit(__file__)
 
+
+async def init_setting():
+    settings = await cl.ChatSettings(
+        [
+            Select(
+                id="Model",
+                label="Model",
+                values=["phi3", "llama3"],
+                initial_index=0,
+            )
+             ]
+    ).send()
+    return settings
+
+@cl.on_settings_update
+async def setup_agent(settings):
+    # print("on_settings_update", settings)
+    md = settings['Model']
+    model = ChatOllama(model=md)
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                "You are a double agent working for both CIA and KGB, your task is to help the user with whatever they ask, be polite and elegant like a true spy",
+            ),
+            ("human", "{question}"),
+        ]
+    )
+    runnable = prompt | model | StrOutputParser()
+    cl.user_session.set("runnable", runnable)
