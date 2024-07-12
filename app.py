@@ -1,11 +1,12 @@
 import chainlit as cl
 from qachatbot.commands import commands
+from qachatbot.bot.chat import process_command, process_response
 
 from langchain.chat_models.ollama import ChatOllama
 from langchain.prompts import ChatPromptTemplate
 from langchain.schema import StrOutputParser
-from langchain.schema.runnable import Runnable
-from langchain.schema.runnable.config import RunnableConfig
+# from langchain.schema.runnable import Runnable
+# from langchain.schema.runnable.config import RunnableConfig
 
 @cl.on_chat_start
 def on_chat_start():
@@ -33,32 +34,19 @@ def on_chat_end():
 async def on_message(message: cl.Message):
     content = message.content
 
-    response = ""
+    response = f"Received: {content}"
 
     if content.startswith("/"):
         # TODO: refactor into a function called `process_command()`
-        content = content.strip()
-        cmd = content.split()
-        if cmd[0] == "/tp":
-            if len(cmd) != 5:
-                response = "Wrong syntax!"
-            else:
-                response = commands.tp(cmd[1], cmd[2], cmd[3], cmd[4])
+        response = process_command(content)
+        await cl.Message(response).send()
+    
     else: # add chatbot here
-        runnable = cl.user_session.get("runnable")  # type: Runnable
-
-        msg = cl.Message(content="")
-
-        async for chunk in runnable.astream(
-            {"question": message.content},
-            config=RunnableConfig(callbacks=[cl.LangchainCallbackHandler()]),
-        ):
-            await msg.stream_token(chunk)
-
-        await msg.send()
-        # response = f"Recieved: {content}"
-
-    await cl.Message(response).send()
+        try:
+            await process_response(message)
+        except Exception as e:
+            print(e)
+            await cl.Message(response).send()
 
 
 if __name__ == "__main__":
