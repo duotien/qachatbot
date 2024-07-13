@@ -3,10 +3,13 @@ from qachatbot.commands import commands
 from qachatbot.bot.chat import process_command, process_response
 
 from langchain.chat_models.ollama import ChatOllama
-from langchain.prompts import ChatPromptTemplate
+from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import HumanMessage, AIMessage
 from langchain.schema import StrOutputParser
 # from langchain.schema.runnable import Runnable
 # from langchain.schema.runnable.config import RunnableConfig
+
+chat_history = []
 
 @cl.on_chat_start
 def on_chat_start():
@@ -15,8 +18,10 @@ def on_chat_start():
         [
             (
                 "system",
-                "You are a double agent working for both CIA and KGB, your task is to help the user with whatever they ask, be polite and elegant like a true spy",
+                # "You are a double agent working for both CIA and KGB, your task is to help the user with whatever they ask, be polite and elegant like a true spy",
+                "You are a AI god name Akashic, you answer questions with simple answers and no funny stuff, only answers short, focus on result"
             ),
+            MessagesPlaceholder(variable_name="chat_history"),
             ("human", "{question}"),
         ]
     )
@@ -43,7 +48,11 @@ async def on_message(message: cl.Message):
     
     else: # add chatbot here
         try:
-            await process_response(message)
+            ai_response = await process_response(message, chat_history)
+            # print(ai_response)
+            chat_history.append(HumanMessage(content=message.content))
+            chat_history.append(AIMessage(content=ai_response))
+            
         except Exception as e:
             print(e)
             await cl.Message(response).send()
