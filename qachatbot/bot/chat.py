@@ -24,9 +24,9 @@ async def process_response(message: cl.Message, chat_history):
         {"question": message.content, "chat_history": chat_history},
         config=RunnableConfig(callbacks=[cl.LangchainCallbackHandler()]),
     ):  
-        # print(chunk)
         await msg.stream_token(chunk)
     await msg.send()
     return msg.content
-        # response = f"Recieved: {content}"
+
+
 
