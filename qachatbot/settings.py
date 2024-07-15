@@ -1,3 +1,4 @@
+# This file handle global variables and objects
 import chainlit as cl
 from langchain_community.embeddings.huggingface import HuggingFaceBgeEmbeddings
 from qachatbot.bot.chat import VectorStoreManager
