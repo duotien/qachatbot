@@ -1,6 +1,7 @@
 import os
 from typing import Any, Dict
 
+from PIL import Image
 import chainlit as cl
 from chainlit.input_widget import Select
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -13,6 +14,7 @@ from langchain_core.runnables import RunnableSequence
 from langchain_community.chat_models.ollama import ChatOllama
 
 from qachatbot import PERSIST_DIR, PROJECT_DIR
+from qachatbot.bot.vision import convert_to_base64
 from qachatbot.commands import commands
 
 
@@ -54,14 +56,37 @@ async def process_rag(user_input: str, k=3):
     return msg
 
 
+async def process_uploaded(message):
+    for element in message.elements:
+        if type(element) == cl.File:
+            print("[DEBUG] You uploaded a File")
+            pass
+        if type(element) == cl.Image:
+            print("[DEBUG] You uploaded an Image")
+            image_b64 = Image.open(element.path)
+            image_b64 = image_b64.convert("RGB")
+            image_b64 = convert_to_base64(image_b64)
+
+            runnable = cl.user_session.get("runnable")  # type: Runnable
+            msg = cl.Message(content="")
+            async for chunk in runnable.astream(
+                {"question": message.content, "image": image_b64},
+                config=RunnableConfig(callbacks=[cl.LangchainCallbackHandler()]),
+            ):
+                await msg.stream_token(chunk)
+            await msg.send()
+            return msg.content
+    pass
+
+
 async def init_settings():
     settings = await cl.ChatSettings(
         [
             Select(
                 id="model",
                 label="Model",
-                values=["phi3", "llama3"],
-                initial_index=0,
+                values=["phi3", "llama3", "llava-phi3"],
+                initial_index=2,
             ),
             Select(
                 id="DB",
@@ -72,8 +97,8 @@ async def init_settings():
             Select(
                 id="chat_mode",
                 label="Chat Mode",
-                values=["chat", "rag"],
-                initial_index=1,
+                values=["chat", "rag", "chat-vision"],
+                initial_index=2,
             ),
         ]
     ).send()
@@ -105,7 +130,6 @@ def setup_qabot(settings: Dict[str, Any]):
         ]
     )
 
-
     runnable = (
         {"context": retriever | _format_docs, "question": RunnablePassthrough()}
         | prompt
@@ -130,6 +154,32 @@ def setup_chatbot(settings: Dict[str, Any]):
     )
     runnable = prompt | llm | StrOutputParser()
     cl.user_session.set("runnable", runnable)
+
+
+def setup_chatbot2(settings):
+    def _prompt_func(data):
+        text = data["question"]
+        image = data["image"]
+
+        image_part = {
+            "type": "image_url",
+            "image_url": f"data:image/jpeg;base64,{image}",
+        }
+        text_part = {"type": "text", "text": text}
+
+        content_parts = []
+
+        content_parts.append(image_part)
+        content_parts.append(text_part)
+
+        return [HumanMessage(content=content_parts)]
+
+    llm = ChatOllama(model=settings["model"])
+
+    runnable = _prompt_func | llm | StrOutputParser()
+    cl.user_session.set("runnable", runnable)
+
+
 
 
 class VectorStoreManager:

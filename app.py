@@ -13,7 +13,9 @@ from qachatbot.bot.chat import (
     process_command,
     process_rag,
     process_response,
+    process_uploaded,
     setup_chatbot,
+    setup_chatbot2,
     setup_qabot,
 )
 from qachatbot.settings import (
@@ -46,12 +48,10 @@ async def on_message(message: cl.Message):
         await cl.Message(response).send()
 
     else:  # add chatbot here
-        # TODO: them nut chuyen mode
         chat_mode = cl.user_session.get("chat_mode")
         if chat_mode == "chat":
             try:
                 ai_response = await process_response(message, chat_history)
-                # print(ai_response)
                 chat_history.append(HumanMessage(content=message.content))
                 chat_history.append(AIMessage(content=ai_response))
 
@@ -61,6 +61,15 @@ async def on_message(message: cl.Message):
         if chat_mode == "rag":
             response = await process_rag(message.content)
             # todo: do something with response or remove it
+        if chat_mode == "chat-vision":
+            try:
+                if message.elements:
+                    print(message.elements)
+                    await process_uploaded(message)
+                # ai_response = await process_response(message, chat_history)
+            except Exception as e:
+                print(e)
+                await cl.Message(response).send()
 
 
 @cl.on_settings_update
@@ -80,6 +89,8 @@ async def setup_agent(settings):
             setup_chatbot(settings)
         case "rag":
             setup_qabot(settings)
+        case "chat-vision":
+            setup_chatbot2(settings)
         case _:
             setup_chatbot(settings)
 
