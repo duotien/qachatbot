@@ -12,7 +12,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableSequence
 from langchain_community.chat_models.ollama import ChatOllama
 
-from qachatbot import PERSIST_DIR, PROJECT_DIR
+from qachatbot import PERSIST_DIR, MD_PERSIST_DIR
 from qachatbot.commands import commands
 
 
@@ -42,7 +42,7 @@ async def process_response(message: cl.Message, chat_history):
 
 
 # TODO: add button to change k
-async def process_rag(user_input: str, k=3):
+async def process_rag(user_input: str, k=5):
     runnable = cl.user_session.get("runnable")
     msg = cl.Message(content="")
     async for chunk in runnable.astream(
@@ -66,7 +66,7 @@ async def init_settings():
             Select(
                 id="DB",
                 label="Database",
-                values=["Chroma"],
+                values=["Chroma", "Markdown"],
                 initial_index=0,
             ),
             Select(
@@ -97,8 +97,8 @@ def setup_qabot(settings: Dict[str, Any]):
                     "Use the following pieces of retrieved context to answer the question. "
                     "If you don't know the answer, just say that you don't know. "
                     "Use three sentences maximum and keep the answer concise. \n"
-                    "Question: {question} \n"
                     "Context: {context} \n"
+                    "Question: {question} \n"
                     "Answer:"
                 ),
             ),
@@ -136,12 +136,22 @@ class VectorStoreManager:
     def __init__(self, embedding_function) -> None:
         self.embedding_function = embedding_function
         self._chromadb = None
+        self._markdown_chromadb = None
 
     @property
-    def chromadbd(self):
+    def chromadb(self):
         if self._chromadb is None:
             self._chromadb = Chroma(
                 persist_directory=PERSIST_DIR,
                 embedding_function=self.embedding_function,
             )
         return self._chromadb
+    
+    @property
+    def markdown_chromadb(self):
+        if self._markdown_chromadb is None:
+            self._markdown_chromadb = Chroma(
+                persist_directory=MD_PERSIST_DIR,
+                embedding_function=self.embedding_function,
+            )
+        return self._markdown_chromadb
