@@ -65,15 +65,18 @@ async def on_message(message: cl.Message):
 
 @cl.on_settings_update
 async def setup_agent(settings):
+    # print("settings:", settings)
     chat_mode = settings["chat_mode"]
     cl.user_session.set("chat_mode", chat_mode)
-
-    match cl.user_session.get("DB"):
+    # print("DB Mode", cl.user_session.get("DB"))
+    match settings['DB']:
         case "Chroma":
-            cl.user_session.set("vectorstore", vectorstore_manager.chromadbd)
+            cl.user_session.set("vectorstore", vectorstore_manager.chromadb)
+        case "Markdown":
+            cl.user_session.set("vectorstore", vectorstore_manager.markdown_chromadb)
         case _:
             # TODO: add another database here
-            cl.user_session.set("vectorstore", vectorstore_manager.chromadbd)
+            cl.user_session.set("vectorstore", vectorstore_manager.chromadb)
 
     match chat_mode:
         case "chat":

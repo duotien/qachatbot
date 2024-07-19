@@ -21,6 +21,13 @@ For other user:
 pip install -r requirements.txt
 ```
 
+Install nltk packages:
+
+```shell
+import nltk
+nltk.download()
+```
+
 To run the chat interface, run:
 
 ```shell
