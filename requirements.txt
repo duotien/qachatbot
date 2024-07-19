@@ -4,4 +4,7 @@ langchain==0.2.6
 langchain-core
 langchain-community
 langchain-chroma==0.1.2
+langchain-openai==0.1.17
 sentence-transformers==3.0.1
+unstructured==0.14.10
+Markdown==3.6
