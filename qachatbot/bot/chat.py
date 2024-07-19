@@ -3,15 +3,16 @@ from typing import Any, Dict
 
 from PIL import Image
 import chainlit as cl
-from chainlit.input_widget import Select
+from chainlit.input_widget import Select, TextInput
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.schema.runnable import Runnable, RunnablePassthrough
 from langchain.schema.runnable.config import RunnableConfig
 from langchain_chroma import Chroma
 from langchain.schema import StrOutputParser
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableSequence
 from langchain_community.chat_models.ollama import ChatOllama
+import requests
 
 from qachatbot import PERSIST_DIR, PROJECT_DIR
 from qachatbot.bot.vision import convert_to_base64
@@ -60,23 +61,25 @@ async def process_uploaded(message):
     for element in message.elements:
         if type(element) == cl.File:
             print("[DEBUG] You uploaded a File")
-            pass
+            await cl.Message(
+                content="You uploaded a file, but I cannot process it yet."
+            ).send()
+
         if type(element) == cl.Image:
             print("[DEBUG] You uploaded an Image")
-            image_b64 = Image.open(element.path)
-            image_b64 = image_b64.convert("RGB")
-            image_b64 = convert_to_base64(image_b64)
+            image = Image.open(element.path)
+            image = image.convert("RGB")
+            image = convert_to_base64(image)
 
             runnable = cl.user_session.get("runnable")  # type: Runnable
             msg = cl.Message(content="")
             async for chunk in runnable.astream(
-                {"question": message.content, "image": image_b64},
+                {"question": message.content, "image": image},
                 config=RunnableConfig(callbacks=[cl.LangchainCallbackHandler()]),
             ):
                 await msg.stream_token(chunk)
             await msg.send()
             return msg.content
-    pass
 
 
 async def init_settings():
@@ -100,6 +103,11 @@ async def init_settings():
                 values=["chat", "rag", "chat-vision"],
                 initial_index=2,
             ),
+            # TextInput(
+            #     id="system_prompt",
+            #     label="System Prompt",
+            #     initial="",
+            # )
         ]
     ).send()
     return settings
@@ -141,6 +149,17 @@ def setup_qabot(settings: Dict[str, Any]):
 
 def setup_chatbot(settings: Dict[str, Any]):
     llm = ChatOllama(model=settings["model"])
+
+    has_clip = False
+    full_llm_model = llm.model if ":" in llm.model else f"{llm.model}:latest"
+    tags = requests.request("GET", url=f"{llm.base_url}/api/tags").json()
+    for model_info in tags["models"]:
+        if full_llm_model == model_info["model"]:
+            if "clip" in model_info["details"]["families"]:
+                has_clip = True
+                break
+    print("[DEBUG] has clip", has_clip)
+
     prompt = ChatPromptTemplate.from_messages(
         [
             (
@@ -157,29 +176,53 @@ def setup_chatbot(settings: Dict[str, Any]):
 
 
 def setup_chatbot2(settings):
-    def _prompt_func(data):
-        text = data["question"]
-        image = data["image"]
-
-        image_part = {
-            "type": "image_url",
-            "image_url": f"data:image/jpeg;base64,{image}",
-        }
-        text_part = {"type": "text", "text": text}
-
-        content_parts = []
-
-        content_parts.append(image_part)
-        content_parts.append(text_part)
-
-        return [HumanMessage(content=content_parts)]
-
     llm = ChatOllama(model=settings["model"])
 
+    has_clip = False
+    full_llm_model = llm.model if ":" in llm.model else f"{llm.model}:latest"
+    tags = requests.request("GET", url=f"{llm.base_url}/api/tags").json()
+    for model_info in tags["models"]:
+
+        if full_llm_model == model_info["model"]:
+            if "clip" in model_info["details"]["families"]:
+                has_clip = True
+                break
+    print("[DEBUG] has clip", has_clip)
+
+    def _base_prompt_func(data:Dict[str, Any], has_clip=False):
+        content_parts = []
+
+        text_part = {
+            "type": "text",
+            "text": data["question"],
+        }
+
+        if has_clip:
+            image_part = {
+                "type": "image_url",
+                "image_url": f"data:image/jpeg;base64,{data['image']}",
+            }
+            content_parts.append(image_part)
+
+        else:
+            text_part["text"] += ". You have been asked by a user with an attached image. Let the user know you cannot answer the user with said image."
+
+        content_parts.append(text_part)
+
+        prompt = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    "You are a AI god name Akashic, you answer questions with simple answers and no funny stuff, only answers short, focus on result",
+                ),
+                HumanMessage(content=content_parts),
+            ]
+        )
+        return prompt
+
+    _prompt_func = lambda data: _base_prompt_func(data, has_clip=has_clip)
     runnable = _prompt_func | llm | StrOutputParser()
     cl.user_session.set("runnable", runnable)
-
-
 
 
 class VectorStoreManager:

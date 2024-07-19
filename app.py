@@ -51,9 +51,12 @@ async def on_message(message: cl.Message):
         chat_mode = cl.user_session.get("chat_mode")
         if chat_mode == "chat":
             try:
-                ai_response = await process_response(message, chat_history)
-                chat_history.append(HumanMessage(content=message.content))
-                chat_history.append(AIMessage(content=ai_response))
+                if message.elements:
+                    pass
+                else:
+                    ai_response = await process_response(message, chat_history)
+                    chat_history.append(HumanMessage(content=message.content))
+                    chat_history.append(AIMessage(content=ai_response))
 
             except Exception as e:
                 print(e)
