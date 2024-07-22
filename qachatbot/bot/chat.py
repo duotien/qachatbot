@@ -18,6 +18,37 @@ from qachatbot import MD_PERSIST_DIR, PERSIST_DIR
 from qachatbot.bot.vision import convert_to_base64
 from qachatbot.commands import commands
 
+BASE_CHAT_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            (
+                "You are a AI god name Akashic, you answer questions "
+                "with simple answers and no funny stuff, only answers short, focus on result"
+            ),
+        ),
+        MessagesPlaceholder(variable_name="chat_history"),
+        ("human", "{question}"),
+    ]
+)
+
+BASE_RAG_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        (
+            "human",
+            (
+                "You are an assistant for question-answering tasks. "
+                "Use the following pieces of retrieved context to answer the question. "
+                "If you don't know the answer, just say that you don't know. "
+                "Use three sentences maximum and keep the answer concise. \n"
+                "Context: {context} \n"
+                "Question: {question} \n"
+                "Answer:"
+            ),
+        ),
+    ]
+)
+
 
 def process_command(content: str):
     content = content.strip()
@@ -31,44 +62,50 @@ def process_command(content: str):
     return response
 
 
-async def process_response_or_vision(message: cl.Message, chat_history):
-    runnable = cl.user_session.get("runnable")  # type: Runnable
-    msg = cl.Message(content="")
-    async for chunk in runnable.astream(
-        {"question": message.content, "chat_history": chat_history},
-        config=RunnableConfig(callbacks=[cl.LangchainCallbackHandler()]),
-    ):
-        await msg.stream_token(chunk)
-    await msg.send()
-    return msg.content
+# TODO: add history when chatting with image
+async def process_response_with_vision(message: cl.Message):
+    llm_has_clip = cl.user_session.get("llm_has_clip")
+    response = cl.Message(content="")
+    if not llm_has_clip:
+        response.content = "Sorry, this model cannot handle image."
+        await response.send()
+        return response.content
+
+    await process_uploaded(message)
 
 
 async def process_response(message: cl.Message, chat_history):
     runnable = cl.user_session.get("runnable")  # type: Runnable
+
     # runnable.invoke({"question": message.content, "chat_history": chat_history})
-    msg = cl.Message(content="")
+    response = cl.Message(content="")
     async for chunk in runnable.astream(
-        {"question": message.content, "chat_history": chat_history},
+        {
+            "question": message.content,
+            "chat_history": chat_history,
+            # "image": None,
+        },
         config=RunnableConfig(callbacks=[cl.LangchainCallbackHandler()]),
     ):
-        await msg.stream_token(chunk)
-    await msg.send()
-    return msg.content
+        await response.stream_token(chunk)
+    await response.send()
+    return response.content
 
 
 # TODO: add button to change k
-async def process_rag(user_input: str, k=5):
+async def process_rag(message: str, k=5):
     runnable = cl.user_session.get("runnable")
-    msg = cl.Message(content="")
+    response = cl.Message(content="")
     async for chunk in runnable.astream(
-        user_input,
+        message.content,
         config=RunnableConfig(callbacks=[cl.LangchainCallbackHandler()]),
     ):
-        await msg.stream_token(chunk)
-    await msg.send()
-    return msg
+        await response.stream_token(chunk)
+    await response.send()
+    return response
 
 
+# currently limited to 1 file
 async def process_uploaded(message):
     for element in message.elements:
         if type(element) == cl.File:
@@ -84,14 +121,18 @@ async def process_uploaded(message):
             image = convert_to_base64(image)
 
             runnable = cl.user_session.get("runnable")  # type: Runnable
-            msg = cl.Message(content="")
+            response = cl.Message(content="")
             async for chunk in runnable.astream(
-                input={"question": message.content, "image": image},
+                input={
+                    "question": message.content,
+                    "chat_history": [],
+                    "image": image,
+                },
                 config=RunnableConfig(callbacks=[cl.LangchainCallbackHandler()]),
             ):
-                await msg.stream_token(chunk)
-            await msg.send()
-            return msg.content
+                await response.stream_token(chunk)
+            await response.send()
+            return response.content
 
 
 async def init_settings():
@@ -112,8 +153,8 @@ async def init_settings():
             Select(
                 id="chat_mode",
                 label="Chat Mode",
-                values=["chat", "rag", "chat-vision"],
-                initial_index=2,
+                values=["chat", "rag"],
+                initial_index=0,
             ),
             # TextInput(
             #     id="system_prompt",
@@ -133,23 +174,7 @@ def setup_qabot(settings: Dict[str, Any]):
         return "\n\n".join(doc.page_content for doc in docs)
 
     llm = ChatOllama(model=settings["model"])
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            (
-                "human",
-                (
-                    "You are an assistant for question-answering tasks. "
-                    "Use the following pieces of retrieved context to answer the question. "
-                    "If you don't know the answer, just say that you don't know. "
-                    "Use three sentences maximum and keep the answer concise. \n"
-                    "Context: {context} \n"
-                    "Question: {question} \n"
-                    "Answer:"
-                ),
-            ),
-        ]
-    )
-
+    prompt = BASE_RAG_PROMPT
     runnable = (
         {"context": retriever | _format_docs, "question": RunnablePassthrough()}
         | prompt
@@ -162,74 +187,74 @@ def setup_qabot(settings: Dict[str, Any]):
 def setup_chatbot(settings: Dict[str, Any]):
     llm = ChatOllama(model=settings["model"])
 
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            (
-                "system",
-                (
-                    "You are a AI god name Akashic, you answer questions "
-                    "with simple answers and no funny stuff, only answers short, focus on result"
-                ),
-            ),
-            MessagesPlaceholder(variable_name="chat_history"),
-            ("human", "{question}"),
-        ]
-    )
+    has_clip = model_has_clip(llm)
+    prompt = BASE_CHAT_PROMPT
+    if has_clip:
+        cl.user_session.set("llm-has-clip", True)
+        prompt = _base_prompt_func
+
     runnable = prompt | llm | StrOutputParser()
+
     cl.user_session.set("runnable", runnable)
+    cl.user_session.set("llm_has_clip", has_clip)
 
 
-def setup_chatbot_with_vision(settings):
-    llm = ChatOllama(model=settings["model"])
-    has_clip = model_has_clip()
+# def setup_chatbot_with_vision(settings):
+#     llm = ChatOllama(model=settings["model"])
+#     has_clip = model_has_clip()
 
-    _prompt_func = lambda data: _base_prompt_func(data, has_clip=has_clip)
-    runnable = _prompt_func | llm | StrOutputParser()
-    cl.user_session.set("runnable", runnable)
+#     _prompt_func = lambda data: _base_vision_prompt_func(data, has_clip=has_clip)
+#     runnable = _prompt_func | llm | StrOutputParser()
+#     cl.user_session.set("runnable", runnable)
 
 
 def model_has_clip(llm: ChatOllama) -> bool:
-    full_llm_model = llm.model if ":" in llm.model else f"{llm.model}:latest"
+    ollama_llm_model_name = llm.model if ":" in llm.model else f"{llm.model}:latest"
     tags = requests.request("GET", url=f"{llm.base_url}/api/tags").json()
     for model_info in tags["models"]:
-        if full_llm_model == model_info["model"]:
+        if ollama_llm_model_name == model_info["model"]:
             if "clip" in model_info["details"]["families"]:
                 return True
     return False
 
 
-def _base_prompt_func(data: Dict[str, Any], has_clip=False):
-    content_parts = []
-    text_part = {
-        "type": "text",
-        "text": data["question"],
-    }
-
-    if has_clip:
-        image_part = {
-            "type": "image_url",
-            "image_url": f"data:image/jpeg;base64,{data['image']}",
+def _base_prompt_func(data: Dict[str, Any]):
+    prompt = BASE_CHAT_PROMPT
+    if "image" in data:
+        content_parts = []
+        text_part = {
+            "type": "text",
+            "text": data["question"],
         }
-        content_parts.append(image_part)
-    else:
-        text_part["text"] += (
-            ". You have been asked by a user with an attached image. "
-            "Let the user know you cannot answer the user with said image."
-        )
+        if data["image"] != "":
+            image_part = {
+                "type": "image_url",
+                "image_url": f"data:image/jpeg;base64,{data['image']}",
+            }
+            content_parts.append(image_part)
+        else:
+            text_part += (
+                ". (the user added an image but you cannot process it, "
+                "respond with 4 sentences maximum to inform the user)"
+            )
 
-    content_parts.append(text_part)
+        content_parts.append(text_part)
 
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            (
-                "system",
+        prompt = ChatPromptTemplate.from_messages(
+            [
                 (
-                    "You are a AI god name Akashic, you answer questions with "
-                    "simple answers and no funny stuff, only answers short, focus on result"
+                    "system",
+                    (
+                        "You are an AI assistant, you reply the user with "
+                        "concise and easy to understand answers."
+                    ),
                 ),
-            ),
-            HumanMessage(content=content_parts),
-        ]
-    )
+                MessagesPlaceholder(variable_name="chat_history", optional=True),
+                HumanMessage(content=content_parts),
+            ]
+        )
+        print(f"[DEBUG] {content_parts}")
+
+    print(f"[DEBUG] {prompt}")
 
     return prompt

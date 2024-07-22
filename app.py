@@ -8,9 +8,9 @@ from qachatbot.bot.chat import (
     process_command,
     process_rag,
     process_response,
+    process_response_with_vision,
     process_uploaded,
     setup_chatbot,
-    setup_chatbot_with_vision,
     setup_qabot,
 )
 from qachatbot.settings import (
@@ -47,11 +47,11 @@ async def on_message(message: cl.Message):
         if chat_mode == "chat":
             try:
                 if message.elements:
-                    pass
+                    await process_response_with_vision(message)
                 else:
-                    ai_response = await process_response(message, chat_history)
+                    response = await process_response(message, chat_history)
                     chat_history.append(HumanMessage(content=message.content))
-                    chat_history.append(AIMessage(content=ai_response))
+                    chat_history.append(AIMessage(content=response))
 
             except Exception as e:
                 print(e)
@@ -59,23 +59,15 @@ async def on_message(message: cl.Message):
         if chat_mode == "rag":
             response = await process_rag(message.content)
             # todo: do something with response or remove it
-        if chat_mode == "chat-vision":
-            try:
-                if message.elements:
-                    print(message.elements)
-                    await process_uploaded(message)
-                # ai_response = await process_response(message, chat_history)
-            except Exception as e:
-                print(e)
-                await cl.Message(response).send()
 
 
 @cl.on_settings_update
 async def setup_agent(settings):
-    # print("settings:", settings)
     chat_mode = settings["chat_mode"]
-    cl.user_session.set("chat_mode", chat_mode)
-    # print("DB Mode", cl.user_session.get("DB"))
+
+    cl.user_session.set("chat_mode", settings["chat_mode"])
+    cl.user_session.set("DB", settings["DB"])
+
     match settings["DB"]:
         case "Chroma":
             cl.user_session.set("vectorstore", vectorstore_manager.chromadb)
@@ -90,7 +82,8 @@ async def setup_agent(settings):
             setup_chatbot(settings)
         case "rag":
             setup_qabot(settings)
-        case "chat-vision":
-            setup_chatbot_with_vision(settings)
+        # case "chat-vision":
+            # TODO: merge this into `chat`
+            # setup_chatbot_with_vision(settings)
         case _:
             setup_chatbot(settings)
