@@ -1,11 +1,6 @@
 import os
 
 import chainlit as cl
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain.schema import StrOutputParser
-from langchain_chroma import Chroma
-from langchain_community.chat_models.ollama import ChatOllama
-from langchain_community.embeddings.huggingface import HuggingFaceBgeEmbeddings
 from langchain_core.messages import AIMessage, HumanMessage
 
 from qachatbot.bot.chat import (
@@ -15,7 +10,7 @@ from qachatbot.bot.chat import (
     process_response,
     process_uploaded,
     setup_chatbot,
-    setup_chatbot2,
+    setup_chatbot_with_vision,
     setup_qabot,
 )
 from qachatbot.settings import (
@@ -81,7 +76,7 @@ async def setup_agent(settings):
     chat_mode = settings["chat_mode"]
     cl.user_session.set("chat_mode", chat_mode)
     # print("DB Mode", cl.user_session.get("DB"))
-    match settings['DB']:
+    match settings["DB"]:
         case "Chroma":
             cl.user_session.set("vectorstore", vectorstore_manager.chromadb)
         case "Markdown":
@@ -96,7 +91,6 @@ async def setup_agent(settings):
         case "rag":
             setup_qabot(settings)
         case "chat-vision":
-            setup_chatbot2(settings)
+            setup_chatbot_with_vision(settings)
         case _:
             setup_chatbot(settings)
-

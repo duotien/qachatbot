@@ -31,6 +31,18 @@ def process_command(content: str):
     return response
 
 
+async def process_response_or_vision(message: cl.Message, chat_history):
+    runnable = cl.user_session.get("runnable")  # type: Runnable
+    msg = cl.Message(content="")
+    async for chunk in runnable.astream(
+        {"question": message.content, "chat_history": chat_history},
+        config=RunnableConfig(callbacks=[cl.LangchainCallbackHandler()]),
+    ):
+        await msg.stream_token(chunk)
+    await msg.send()
+    return msg.content
+
+
 async def process_response(message: cl.Message, chat_history):
     runnable = cl.user_session.get("runnable")  # type: Runnable
     # runnable.invoke({"question": message.content, "chat_history": chat_history})
@@ -74,7 +86,7 @@ async def process_uploaded(message):
             runnable = cl.user_session.get("runnable")  # type: Runnable
             msg = cl.Message(content="")
             async for chunk in runnable.astream(
-                {"question": message.content, "image": image},
+                input={"question": message.content, "image": image},
                 config=RunnableConfig(callbacks=[cl.LangchainCallbackHandler()]),
             ):
                 await msg.stream_token(chunk)
@@ -150,22 +162,14 @@ def setup_qabot(settings: Dict[str, Any]):
 def setup_chatbot(settings: Dict[str, Any]):
     llm = ChatOllama(model=settings["model"])
 
-    has_clip = False
-    full_llm_model = llm.model if ":" in llm.model else f"{llm.model}:latest"
-    tags = requests.request("GET", url=f"{llm.base_url}/api/tags").json()
-    for model_info in tags["models"]:
-        if full_llm_model == model_info["model"]:
-            if "clip" in model_info["details"]["families"]:
-                has_clip = True
-                break
-    print("[DEBUG] has clip", has_clip)
-
     prompt = ChatPromptTemplate.from_messages(
         [
             (
                 "system",
-                # "You are a double agent working for both CIA and KGB, your task is to help the user with whatever they ask, be polite and elegant like a true spy",
-                "You are a AI god name Akashic, you answer questions with simple answers and no funny stuff, only answers short, focus on result",
+                (
+                    "You are a AI god name Akashic, you answer questions "
+                    "with simple answers and no funny stuff, only answers short, focus on result"
+                ),
             ),
             MessagesPlaceholder(variable_name="chat_history"),
             ("human", "{question}"),
@@ -175,56 +179,60 @@ def setup_chatbot(settings: Dict[str, Any]):
     cl.user_session.set("runnable", runnable)
 
 
-def setup_chatbot2(settings):
+def setup_chatbot_with_vision(settings):
     llm = ChatOllama(model=settings["model"])
-
-    has_clip = False
-    full_llm_model = llm.model if ":" in llm.model else f"{llm.model}:latest"
-    tags = requests.request("GET", url=f"{llm.base_url}/api/tags").json()
-    for model_info in tags["models"]:
-
-        if full_llm_model == model_info["model"]:
-            if "clip" in model_info["details"]["families"]:
-                has_clip = True
-                break
-    print("[DEBUG] has clip", has_clip)
-
-    def _base_prompt_func(data: Dict[str, Any], has_clip=False):
-        content_parts = []
-
-        text_part = {
-            "type": "text",
-            "text": data["question"],
-        }
-
-        if has_clip:
-            image_part = {
-                "type": "image_url",
-                "image_url": f"data:image/jpeg;base64,{data['image']}",
-            }
-            content_parts.append(image_part)
-
-        else:
-            text_part[
-                "text"
-            ] += ". You have been asked by a user with an attached image. Let the user know you cannot answer the user with said image."
-
-        content_parts.append(text_part)
-
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                (
-                    "system",
-                    "You are a AI god name Akashic, you answer questions with simple answers and no funny stuff, only answers short, focus on result",
-                ),
-                HumanMessage(content=content_parts),
-            ]
-        )
-        return prompt
+    has_clip = model_has_clip()
 
     _prompt_func = lambda data: _base_prompt_func(data, has_clip=has_clip)
     runnable = _prompt_func | llm | StrOutputParser()
     cl.user_session.set("runnable", runnable)
+
+
+def model_has_clip(llm: ChatOllama) -> bool:
+    full_llm_model = llm.model if ":" in llm.model else f"{llm.model}:latest"
+    tags = requests.request("GET", url=f"{llm.base_url}/api/tags").json()
+    for model_info in tags["models"]:
+        if full_llm_model == model_info["model"]:
+            if "clip" in model_info["details"]["families"]:
+                return True
+    return False
+
+
+def _base_prompt_func(data: Dict[str, Any], has_clip=False):
+    content_parts = []
+    text_part = {
+        "type": "text",
+        "text": data["question"],
+    }
+
+    if has_clip:
+        image_part = {
+            "type": "image_url",
+            "image_url": f"data:image/jpeg;base64,{data['image']}",
+        }
+        content_parts.append(image_part)
+    else:
+        text_part["text"] += (
+            ". You have been asked by a user with an attached image. "
+            "Let the user know you cannot answer the user with said image."
+        )
+
+    content_parts.append(text_part)
+
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                (
+                    "You are a AI god name Akashic, you answer questions with "
+                    "simple answers and no funny stuff, only answers short, focus on result"
+                ),
+            ),
+            HumanMessage(content=content_parts),
+        ]
+    )
+
+    return prompt
 
 
 class VectorStoreManager:
