@@ -1,20 +1,20 @@
 import os
 from typing import Any, Dict
 
-from PIL import Image
 import chainlit as cl
+import requests
 from chainlit.input_widget import Select, TextInput
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.schema import StrOutputParser
 from langchain.schema.runnable import Runnable, RunnablePassthrough
 from langchain.schema.runnable.config import RunnableConfig
 from langchain_chroma import Chroma
-from langchain.schema import StrOutputParser
+from langchain_community.chat_models.ollama import ChatOllama
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableSequence
-from langchain_community.chat_models.ollama import ChatOllama
-import requests
+from PIL import Image
 
-from qachatbot import PERSIST_DIR, PROJECT_DIR
+from qachatbot import MD_PERSIST_DIR, PERSIST_DIR
 from qachatbot.bot.vision import convert_to_base64
 from qachatbot.commands import commands
 
@@ -45,7 +45,7 @@ async def process_response(message: cl.Message, chat_history):
 
 
 # TODO: add button to change k
-async def process_rag(user_input: str, k=3):
+async def process_rag(user_input: str, k=5):
     runnable = cl.user_session.get("runnable")
     msg = cl.Message(content="")
     async for chunk in runnable.astream(
@@ -94,7 +94,7 @@ async def init_settings():
             Select(
                 id="DB",
                 label="Database",
-                values=["Chroma"],
+                values=["Chroma", "Markdown"],
                 initial_index=0,
             ),
             Select(
@@ -130,8 +130,8 @@ def setup_qabot(settings: Dict[str, Any]):
                     "Use the following pieces of retrieved context to answer the question. "
                     "If you don't know the answer, just say that you don't know. "
                     "Use three sentences maximum and keep the answer concise. \n"
-                    "Question: {question} \n"
                     "Context: {context} \n"
+                    "Question: {question} \n"
                     "Answer:"
                 ),
             ),
@@ -189,7 +189,7 @@ def setup_chatbot2(settings):
                 break
     print("[DEBUG] has clip", has_clip)
 
-    def _base_prompt_func(data:Dict[str, Any], has_clip=False):
+    def _base_prompt_func(data: Dict[str, Any], has_clip=False):
         content_parts = []
 
         text_part = {
@@ -205,7 +205,9 @@ def setup_chatbot2(settings):
             content_parts.append(image_part)
 
         else:
-            text_part["text"] += ". You have been asked by a user with an attached image. Let the user know you cannot answer the user with said image."
+            text_part[
+                "text"
+            ] += ". You have been asked by a user with an attached image. Let the user know you cannot answer the user with said image."
 
         content_parts.append(text_part)
 
@@ -229,12 +231,22 @@ class VectorStoreManager:
     def __init__(self, embedding_function) -> None:
         self.embedding_function = embedding_function
         self._chromadb = None
+        self._markdown_chromadb = None
 
     @property
-    def chromadbd(self):
+    def chromadb(self):
         if self._chromadb is None:
             self._chromadb = Chroma(
                 persist_directory=PERSIST_DIR,
                 embedding_function=self.embedding_function,
             )
         return self._chromadb
+
+    @property
+    def markdown_chromadb(self):
+        if self._markdown_chromadb is None:
+            self._markdown_chromadb = Chroma(
+                persist_directory=MD_PERSIST_DIR,
+                embedding_function=self.embedding_function,
+            )
+        return self._markdown_chromadb
