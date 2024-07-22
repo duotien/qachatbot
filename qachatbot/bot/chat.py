@@ -14,6 +14,7 @@ from langchain_community.chat_models.ollama import ChatOllama
 
 from qachatbot import PERSIST_DIR, MD_PERSIST_DIR
 from qachatbot.commands import commands
+from langchain.document_loaders import WebBaseLoader
 
 
 def process_command(content: str):
@@ -25,6 +26,12 @@ def process_command(content: str):
             response = "Wrong syntax!"
         else:
             response = commands.tp(cmd[1], cmd[2], cmd[3], cmd[4])
+    elif cmd[0] == "/ingest-url":
+        if len(cmd) > 2:
+            response = "Wrong URL link!"
+        else:
+            response = commands.ingest(cmd[1])
+
     return response
 
 
