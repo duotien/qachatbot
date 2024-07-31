@@ -1,5 +1,4 @@
 import os
-
 import chainlit as cl
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.schema import StrOutputParser
@@ -17,7 +16,6 @@ from qachatbot.bot.chat import (
     setup_qabot,
 )
 from qachatbot.settings import (
-    chat_history,
     vectorstore_manager,
 )
 
@@ -50,13 +48,10 @@ async def on_message(message: cl.Message):
         chat_mode = cl.user_session.get("chat_mode")
         if chat_mode == "chat":
             try:
-                ai_response = await process_response(message, chat_history)
-                # print(ai_response)
-                chat_history.append(HumanMessage(content=message.content))
-                chat_history.append(AIMessage(content=ai_response))
+                ai_response = await process_response(message)
 
             except Exception as e:
-                print(e)
+                raise e
                 await cl.Message(response).send()
         if chat_mode == "rag":
             response = await process_rag(message.content)
