@@ -16,13 +16,17 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from qachatbot import PERSIST_DIR, MD_PERSIST_DIR
 from qachatbot.commands import commands
 
-from qachatbot.settings import store_session
+from qachatbot.settings import store_session, embedding_function
 
 from langchain_core.chat_history import (
     BaseChatMessageHistory,
     InMemoryChatMessageHistory,
 )
 
+
+
+# URL = "https://www.youtube.com/watch?v=9RhWXPcKBI8" # mr bearst
+# URL = "https://www.youtube.com/watch?v=0ZZquVylLEo"
 
 def process_command(content: str):
     content = content.strip()
@@ -33,6 +37,10 @@ def process_command(content: str):
             response = "Wrong syntax!"
         else:
             response = commands.tp(cmd[1], cmd[2], cmd[3], cmd[4])
+    if cmd[0] == "/yt":
+        commands.yt(cmd[1:])
+        response = "Processed video! change DB to `Temp` to chat about video"
+
     return response
 
 
@@ -77,7 +85,7 @@ async def init_settings():
             Select(
                 id="DB",
                 label="Database",
-                values=["Chroma", "Markdown"],
+                values=["Chroma", "Markdown", "Temp"],
                 initial_index=0,
             ),
             Select(

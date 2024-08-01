@@ -17,12 +17,15 @@ from qachatbot.bot.chat import (
 )
 from qachatbot.settings import (
     vectorstore_manager,
+    embedding_function
 )
 
 
 @cl.on_chat_start
 async def on_chat_start():
     settings = await init_settings()
+    user_id = cl.user_session.get("id")
+    vectorstore_manager.temp_chromadb[user_id] = Chroma(embedding_function=embedding_function)
     await setup_agent(settings)
     print("A new chat session has started!")
 
@@ -30,6 +33,9 @@ async def on_chat_start():
 @cl.on_chat_end
 def on_chat_end():
     print("The user disconnected!")
+    user_id = cl.user_session.get("id")
+    vectorstore_manager.temp_chromadb[user_id].reset_collection()
+    print(f"deleted collection {user_id}")
 
 
 @cl.on_message
@@ -69,6 +75,10 @@ async def setup_agent(settings):
             cl.user_session.set("vectorstore", vectorstore_manager.chromadb)
         case "Markdown":
             cl.user_session.set("vectorstore", vectorstore_manager.markdown_chromadb)
+        case "Temp":
+            user_id = cl.user_session.get("id")
+            # create temporary vectorstore for each user
+            cl.user_session.set("vectorstore", vectorstore_manager.temp_chromadb[user_id])
         case _:
             # TODO: add another database here
             cl.user_session.set("vectorstore", vectorstore_manager.chromadb)

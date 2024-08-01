@@ -7,6 +7,7 @@ class VectorStoreManager:
         self.embedding_function = embedding_function
         self._chromadb = None
         self._markdown_chromadb = None
+        self._temp_chromadb = None
 
     @property
     def chromadb(self):
@@ -25,3 +26,11 @@ class VectorStoreManager:
                 embedding_function=self.embedding_function,
             )
         return self._markdown_chromadb
+
+    @property
+    def temp_chromadb(self):
+        if self._temp_chromadb is None:
+            self._temp_chromadb = {
+                # user_id : Chroma()
+            }
+        return self._temp_chromadb
