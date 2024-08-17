@@ -12,6 +12,7 @@ from qachatbot.bot.chat import (
     process_command,
     process_rag,
     process_response,
+    process_response_with_vision,
     setup_chatbot,
     setup_qabot,
 )
@@ -39,23 +40,24 @@ async def on_message(message: cl.Message):
     response = f"Received: {content}"
 
     if content.startswith("/"):
-        # TODO: refactor into a function called `process_command()`
         response = process_command(content)
         await cl.Message(response).send()
 
-    else:  # add chatbot here
-        # TODO: them nut chuyen mode
+    else:
         chat_mode = cl.user_session.get("chat_mode")
         if chat_mode == "chat":
             try:
-                ai_response = await process_response(message)
+                if message.elements:
+                    await process_response_with_vision(message)
+                else:
+                    response = await process_response(message)
 
             except Exception as e:
                 raise e
                 await cl.Message(response).send()
+
         if chat_mode == "rag":
             response = await process_rag(message.content)
-            # todo: do something with response or remove it
 
 
 @cl.on_settings_update
