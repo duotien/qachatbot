@@ -5,4 +5,4 @@ from qachatbot.utils.vectorstore import VectorStoreManager
 
 embedding_function = HuggingFaceBgeEmbeddings(model_name="BAAI/bge-small-en-v1.5")
 vectorstore_manager = VectorStoreManager(embedding_function)
-chat_history = []
+store_session = {}
