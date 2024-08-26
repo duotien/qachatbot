@@ -1,24 +1,15 @@
 import os
-import chainlit as cl
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain.schema import StrOutputParser
-from langchain_chroma import Chroma
-from langchain_community.chat_models.ollama import ChatOllama
-from langchain_community.embeddings.huggingface import HuggingFaceBgeEmbeddings
-from langchain_core.messages import AIMessage, HumanMessage
 
+import chainlit as cl
+
+from qachatbot.bot.bot import init_settings, setup_chatbot, setup_qabot
 from qachatbot.bot.chat import (
-    init_settings,
     process_command,
     process_rag,
     process_response,
     process_response_with_vision,
-    setup_chatbot,
-    setup_qabot,
 )
-from qachatbot.settings import (
-    vectorstore_manager,
-)
+from qachatbot.settings import vectorstore_manager
 
 
 @cl.on_chat_start
@@ -53,8 +44,8 @@ async def on_message(message: cl.Message):
                     response = await process_response(message)
 
             except Exception as e:
-                raise e
                 await cl.Message(response).send()
+                raise e
 
         if chat_mode == "rag":
             response = await process_rag(message.content)
@@ -66,7 +57,7 @@ async def setup_agent(settings):
     chat_mode = settings["chat_mode"]
     cl.user_session.set("chat_mode", chat_mode)
     # print("DB Mode", cl.user_session.get("DB"))
-    match settings['DB']:
+    match settings["DB"]:
         case "Chroma":
             cl.user_session.set("vectorstore", vectorstore_manager.chromadb)
         case "Markdown":
@@ -82,4 +73,3 @@ async def setup_agent(settings):
             setup_qabot(settings)
         case _:
             setup_chatbot(settings)
-
